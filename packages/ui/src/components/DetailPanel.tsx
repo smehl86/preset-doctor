@@ -79,40 +79,14 @@ export function DetailPanel({
           <p>{main.explanation}</p>
         </section>
       )}
-      {preset.compat && (
-        <section className="printers-section" data-testid="printers-section">
-          <h3>Printers</h3>
-          <ul>
-            {compatLines(preset.compat, slicer).map((l, i) => (
-              <li key={i}>{l}</li>
-            ))}
-          </ul>
-          {preset.status === 'unsupported' && (
-            <p className="muted">
-              Preset Doctor doesn't change which printers this preset is for. The explanation above
-              says what to do in {slicer}.
-            </p>
-          )}
-          {preset.compat.moreNozzles && onMoreNozzles && (
-            <p data-testid="more-nozzles">
-              It isn't offered for every nozzle size you've added (
-              {nozzleOfferText(preset.compat.moreNozzles)}).{' '}
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => onMoreNozzles(path)}
-                data-testid="more-nozzles-button"
-              >
-                Offer it on more nozzle sizes…
-              </button>
-            </p>
-          )}
-        </section>
-      )}
 
       {fixes.candidates && (
         <fieldset className="candidates">
-          <legend>Choose the new parent preset</legend>
+          <legend>
+            {preset.status === 'unsupported'
+              ? 'Retarget to an added printer'
+              : 'Choose the new parent preset'}
+          </legend>
           {fixes.candidates.map((c) => (
             <label
               key={c.name}
@@ -145,6 +119,37 @@ export function DetailPanel({
             </span>
           </label>
         </fieldset>
+      )}
+
+      {preset.compat && (
+        <section className="printers-section" data-testid="printers-section">
+          <h3>Printers</h3>
+          <ul>
+            {compatLines(preset.compat, slicer).map((l, i) => (
+              <li key={i}>{l}</li>
+            ))}
+          </ul>
+          {preset.status === 'unsupported' && !fixes.candidates && (
+            <p className="muted">
+              Preset Doctor doesn't change which printers this preset is for. The explanation above
+              says what to do in {slicer}.
+            </p>
+          )}
+          {preset.compat.moreNozzles && onMoreNozzles && (
+            <p data-testid="more-nozzles">
+              It isn't offered for every nozzle size you've added (
+              {nozzleOfferText(preset.compat.moreNozzles)}).{' '}
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => onMoreNozzles(path)}
+                data-testid="more-nozzles-button"
+              >
+                Offer it on more nozzle sizes…
+              </button>
+            </p>
+          )}
+        </section>
       )}
 
       {fixes.rename !== undefined && !fixes.candidates && (

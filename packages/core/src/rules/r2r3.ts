@@ -126,7 +126,14 @@ export function compatFinding(
         unknownNames.length > 0
           ? ` It also lists printer names ${short} doesn't know (${shortList(quoted(unknownNames), NAMES_SHOWN)}).`
           : '';
-      return {
+      const hasRetarget = detail.retargetCandidates && detail.retargetCandidates.length > 0;
+      const advice = hasRetarget
+        ? `You can retarget it to one of your added printers below, or add ${known.length === 1 ? 'that printer' : 'one of those printers'} in ${studio}'s printer selection.`
+        : `To use it, add ${known.length === 1 ? 'that printer' : 'one of those printers'} in ` +
+          `${studio}'s printer selection. If you no longer have ${known.length === 1 ? 'it' : 'them'}, you ` +
+          `can ignore this preset or delete it in ${short}.`;
+
+      const finding: Finding = {
         ...base,
         ruleId: R2_ID,
         title: "Only for printers you haven't added",
@@ -134,11 +141,16 @@ export function compatFinding(
           intro,
           `It is made for ${shortList(known, NAMES_SHOWN)}, which you haven't added in ${short}.${also}`,
           source,
-          `To use it, add ${known.length === 1 ? 'that printer' : 'one of those printers'} in ` +
-            `${studio}'s printer selection. If you no longer have ${known.length === 1 ? 'it' : 'them'}, you ` +
-            `can ignore this preset or delete it in ${short}.`,
+          advice,
         ),
       };
+      if (hasRetarget) {
+        finding.proposedFix = {
+          kind: 'setInherits',
+          candidates: detail.retargetCandidates!,
+        };
+      }
+      return finding;
     }
     case 'unknown-printers':
       return {

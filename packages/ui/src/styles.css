@@ -745,14 +745,25 @@ select {
   word-break: break-word;
 }
 
-.col-reason span {
+.col-reason > span {
   display: block;
 }
 
 .fix-hint {
   color: var(--accent);
-  font-size: 13px;
+  font-size: 12px;
   margin-top: 2px;
+}
+
+.fix-hint.fix-available {
+  opacity: 0.85;
+}
+
+.fix-options-hint {
+  display: inline;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: normal;
 }
 
 .empty {

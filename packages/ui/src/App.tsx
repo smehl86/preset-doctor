@@ -265,7 +265,26 @@ export function App() {
     }));
   };
   const toggle = (path: string, on: boolean): void => {
-    setSelection((s) => ({ ...s, checked: { ...s.checked, [path]: on } }));
+    setSelection((s) => {
+      let picks = s.picks;
+      if (on && picks[path] === undefined) {
+        const findings = byPath.get(path) ?? [];
+        const fixes = fixesFor(findings);
+        if (fixes.candidates && fixes.candidates.length > 0) {
+          const best =
+            fixes.candidates.find((c) => c.preselected) ??
+            fixes.candidates.find((c) => c.confidence === 'high') ??
+            fixes.candidates[0];
+          if (best) {
+            picks = { ...picks, [path]: best.name };
+          }
+        }
+      }
+      return {
+        picks,
+        checked: { ...s.checked, [path]: on },
+      };
+    });
   };
 
   const planReview = async (
@@ -583,7 +602,29 @@ export function App() {
                 onSearch={setSearch}
                 onSelect={setSelectedPath}
                 onToggle={toggle}
-                onToggleMany={(paths, on) => setSelection((s) => setChecked(s, paths, on))}
+                onToggleMany={(paths, on) =>
+                  setSelection((s) => {
+                    let picks = s.picks;
+                    if (on) {
+                      for (const p of paths) {
+                        if (picks[p] === undefined) {
+                          const findings = byPath.get(p) ?? [];
+                          const fixes = fixesFor(findings);
+                          if (fixes.candidates && fixes.candidates.length > 0) {
+                            const best =
+                              fixes.candidates.find((c) => c.preselected) ??
+                              fixes.candidates.find((c) => c.confidence === 'high') ??
+                              fixes.candidates[0];
+                            if (best) {
+                              picks = { ...picks, [p]: best.name };
+                            }
+                          }
+                        }
+                      }
+                    }
+                    return setChecked({ ...s, picks }, paths, on);
+                  })
+                }
               />
               <DetailPanel
                 preset={selectedPreset}

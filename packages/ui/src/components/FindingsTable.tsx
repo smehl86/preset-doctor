@@ -4,7 +4,6 @@ import {
   displayName,
   fixesFor,
   hasFix,
-  tickablePaths,
   typeOf,
   TYPE_TERMS,
   type Filter,
@@ -47,8 +46,13 @@ export function FindingsTable(props: Props) {
   const { rows, byPath, selection, selectedPath } = props;
   const slicer = useSlicer();
   // Only the rows listed now: a search or filter narrows what "Select all" ticks.
-  const tickable = tickablePaths(rows, byPath, selection.picks);
-  const ticked = tickable.filter((p) => selection.checked[p]).length;
+  const fixablePaths = rows
+    .filter((p) => hasFix(fixesFor(byPath.get(p.path) ?? [])))
+    .map((p) => p.path);
+  const ticked = fixablePaths.filter((p) => {
+    const choice = choiceFor(p, fixesFor(byPath.get(p) ?? []), selection.picks);
+    return Boolean(selection.checked[p]) && choice !== null;
+  }).length;
   return (
     <section className="table-card" aria-label="Presets">
       {props.tabs.length > 1 && (
@@ -93,14 +97,14 @@ export function FindingsTable(props: Props) {
             All presets ({props.totalCount})
           </button>
         </div>
-        {tickable.length > 0 && (
+        {fixablePaths.length > 0 && (
           <div className="select-tools" role="group" aria-label="Select for repair">
             <button
               type="button"
               className="btn small"
-              disabled={ticked === tickable.length}
+              disabled={ticked === fixablePaths.length}
               title="Tick every repair in the list below"
-              onClick={() => props.onToggleMany(tickable, true)}
+              onClick={() => props.onToggleMany(fixablePaths, true)}
               data-testid="select-all"
             >
               Select all
@@ -110,7 +114,7 @@ export function FindingsTable(props: Props) {
               className="btn small"
               disabled={ticked === 0}
               title="Untick every repair in the list below"
-              onClick={() => props.onToggleMany(tickable, false)}
+              onClick={() => props.onToggleMany(fixablePaths, false)}
               data-testid="select-none"
             >
               Select none
@@ -156,6 +160,13 @@ export function FindingsTable(props: Props) {
                 const fixable = hasFix(fixes);
                 const choice = choiceFor(p.path, fixes, selection.picks);
                 const checked = Boolean(selection.checked[p.path]) && choice !== null;
+                const distinctModels = new Set(
+                  fixes.candidates?.map((c) => c.printerModel).filter(Boolean),
+                );
+                const printerSummary =
+                  distinctModels.size > 1
+                    ? `${distinctModels.size} printers`
+                    : (fixes.candidates?.[0]?.printerModel ?? 'installed printer');
                 return (
                   <tr
                     key={p.path}
@@ -180,11 +191,12 @@ export function FindingsTable(props: Props) {
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={choice === null}
                           title={
-                            choice === null
-                              ? 'Pick a replacement in the details first'
-                              : 'Include in "Fix selected"'
+                            checked
+                              ? 'Include in "Fix selected"'
+                              : choice === null
+                                ? 'Click to select recommended repair'
+                                : 'Include in "Fix selected"'
                           }
                           aria-label={`Repair ${displayName(p)}`}
                           onChange={(e) => props.onToggle(p.path, e.target.checked)}
@@ -201,10 +213,43 @@ export function FindingsTable(props: Props) {
                     <td className="col-reason">
                       <span>{p.reason}</span>
                       {checked && choice?.candidateName && (
-                        <span className="fix-hint">Fix: use “{choice.candidateName}”</span>
+                        <span className="fix-hint">
+                          {p.status === 'unsupported' ? (
+                            <>
+                              Retarget: “{choice.candidateName}”
+                              {fixes.candidates && fixes.candidates.length > 1 && (
+                                <span className="fix-options-hint">
+                                  {' '}
+                                  (+{fixes.candidates.length - 1} other option
+                                  {fixes.candidates.length > 2 ? 's' : ''} · click row to change)
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            `Fix: use “${choice.candidateName}”`
+                          )}
+                        </span>
                       )}
                       {checked && choice?.rename && fixes.rename && (
                         <span className="fix-hint">Fix: rename to “{fixes.rename}”</span>
+                      )}
+                      {!checked && fixable && (
+                        <span className="fix-hint fix-available">
+                          {p.status === 'unsupported' &&
+                          fixes.candidates &&
+                          fixes.candidates.length > 0 ? (
+                            <>
+                              Retarget available: {printerSummary}
+                              {fixes.candidates.length > 1 && (
+                                <span className="fix-options-hint">
+                                  {` (${fixes.candidates.length} options · click to choose)`}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            'Repair available'
+                          )}
+                        </span>
                       )}
                     </td>
                   </tr>
