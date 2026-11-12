@@ -50,6 +50,7 @@ import {
   SLICER_TEXT,
   slicerOfRoot,
   typeOf,
+  systemPresetsError,
   unreadIndexTypes,
   visiblePresets,
   type Filter,
@@ -217,6 +218,8 @@ export function App() {
   /** False while `slicer` is only the Bambu Studio fallback (no scan, not a default folder). */
   const slicerKnown = payload !== null || rootSlicer !== undefined;
   const slicerName = slicer.name;
+  /** The system presets are missing or empty: one error banner, and no Fix bar. */
+  const systemError = payload ? systemPresetsError(payload.result) : undefined;
   const unreadTypes = payload ? unreadIndexTypes(payload.result) : [];
   const partialIndex = partialIndexText(unreadTypes, slicer.name);
   /** "Show them" on a grouped note: every row it counts, on a tab that has some. */
@@ -361,7 +364,16 @@ export function App() {
             </span>
           </div>
         )}
-        {payload && (unreadTypes.length > 0 || !payload.result.systemIndexRead) && (
+        {systemError && (
+          <div className="banner error" role="alert" data-testid="system-presets-banner">
+            <span>
+              <strong>Your presets could not be checked.</strong> {systemError.message}
+              {web && ' Then copy the "system" folder into your copy again.'} Repairs are off until
+              then; only problems in the preset files themselves are listed below.
+            </span>
+          </div>
+        )}
+        {payload && !systemError && (unreadTypes.length > 0 || !payload.result.systemIndexRead) && (
           <div className="banner warning" role="alert" data-testid="no-system-banner">
             <span>
               <strong>These results are incomplete.</strong>{' '}
@@ -588,7 +600,7 @@ export function App() {
           )}
         </main>
 
-        {payload && (
+        {payload && !systemError && (
           <FixBar
             count={choices.length}
             studio={studio}

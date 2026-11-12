@@ -44,6 +44,7 @@ import {
   slicerOfRoot,
   tickablePaths,
   TYPE_TERMS,
+  systemPresetsError,
   unreadIndexTypes,
   visiblePresets,
   windowsPath,
@@ -110,6 +111,7 @@ const scan: ScanResult = {
   ],
   findings: [orphan, lowOnly, rename, note],
   warnings: [],
+  systemPresets: 'ok',
   systemVersion: '1',
   systemIndexRead: true,
   slicer: 'bambu',
@@ -532,6 +534,20 @@ describe('the incomplete-results banner', () => {
     );
     expect(partialIndexText([], 'Bambu Studio')).toBeNull();
     expect(partialIndexText(['filament', 'process', 'machine'], 'Bambu Studio')).toBeNull();
+  });
+
+  it('has the system presets error only when the system presets are unusable', () => {
+    expect(systemPresetsError(scan)).toBeUndefined();
+    // A scan result from before the field counts as usable.
+    const older = { ...scan, systemPresets: undefined } as unknown as ScanResult;
+    expect(systemPresetsError(older)).toBeUndefined();
+    const error = { message: 'Missing. Looked in: X/system', path: 'X/system' };
+    expect(systemPresetsError({ ...scan, systemPresets: 'empty', systemPresetsError: error })).toBe(
+      error,
+    );
+    expect(systemPresetsError({ ...scan, systemPresets: 'missing' })?.message).toContain(
+      'missing or empty',
+    );
   });
 });
 

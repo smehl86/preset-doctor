@@ -117,7 +117,11 @@ describe('R4 malformed presets', () => {
 
   it('only checks renames against names of the same type', async () => {
     const fs = fakeStudio(
-      [{ name: 'Generic PLA @BBL X2D', compatible_printers: [] }],
+      [
+        { name: 'Generic PLA @BBL X2D', compatible_printers: [] },
+        // The parent exists: without any system process preset, no fix would be proposed at all.
+        { type: 'process', name: '0.20mm Standard @BBL X1C' },
+      ],
       [
         {
           type: 'process',

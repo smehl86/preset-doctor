@@ -288,6 +288,20 @@ export function visiblePresets(
     );
 }
 
+/**
+ * Set when the slicer's system presets are missing or empty (ScanResult.systemPresets is not
+ * 'ok'): nothing was checked against them, so the app shows this one error and no Fix bar.
+ */
+export function systemPresetsError(scan: ScanResult): ScanResult['systemPresetsError'] {
+  if ((scan.systemPresets ?? 'ok') === 'ok') return undefined;
+  return (
+    scan.systemPresetsError ?? {
+      message: "The system presets are missing or empty, so presets can't be checked.",
+      path: '',
+    }
+  );
+}
+
 /** The preset types whose system index could not be read, in tab order. */
 export function unreadIndexTypes(scan: ScanResult): PresetType[] {
   return PRESET_TYPE_ORDER.filter((t) => !scan.indexesRead[t]);

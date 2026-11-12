@@ -109,10 +109,23 @@ export type InheritedKey =
   | 'printerModel'
   | 'printerVariant';
 
+/**
+ * Why an index could not be loaded:
+ * - 'index-missing': there is no system/<vendor>.json;
+ * - 'index-unreadable': it, or a preset folder, is there but can't be read;
+ * - 'index-invalid': it is not a JSON object;
+ * - 'no-list': it has no list of this preset type;
+ * - 'files-missing': it lists presets, but not one of their files is there.
+ */
+export type SystemIndexFailure =
+  'index-missing' | 'index-unreadable' | 'index-invalid' | 'no-list' | 'files-missing';
+
 export class SystemIndexError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
+  readonly reason: SystemIndexFailure;
+  constructor(message: string, reason: SystemIndexFailure, options?: ErrorOptions) {
     super(message, options);
     this.name = 'SystemIndexError';
+    this.reason = reason;
   }
 }
 
@@ -193,6 +206,7 @@ export async function loadSystemIndex(
     if (unreadable) {
       throw new SystemIndexError(
         `Could not read the system presets in ${unreadable.dir} (${unreadable.message}).`,
+        'index-unreadable',
       );
     }
     missing = listed.filter((e) => !present.has(e.path.toLowerCase()));
@@ -200,6 +214,7 @@ export async function loadSystemIndex(
       throw new SystemIndexError(
         `None of the ${listed.length} system presets listed in ${indexPath} were found: the ` +
           `system\\${vendor} folder is missing or incomplete.`,
+        'files-missing',
       );
     }
     for (const e of missing) {
@@ -369,18 +384,28 @@ async function readIndex(fs: PresetFs, indexPath: string): Promise<Record<string
     if (isNotFound(err)) {
       throw new SystemIndexError(
         `Could not read ${indexPath}. Is this a Bambu Studio folder, and has Studio been opened at least once?`,
+        'index-missing',
         { cause: err },
       );
     }
-    throw new SystemIndexError(`Could not read ${indexPath}: ${errorMessage(err)}`, { cause: err });
+    throw new SystemIndexError(
+      `Could not read ${indexPath}: ${errorMessage(err)}`,
+      'index-unreadable',
+      { cause: err },
+    );
   }
   let value: unknown;
   try {
     value = JSON.parse(stripBom(text));
   } catch (err) {
-    throw new SystemIndexError(`${indexPath} is not valid JSON: ${errorMessage(err)}`);
+    throw new SystemIndexError(
+      `${indexPath} is not valid JSON: ${errorMessage(err)}`,
+      'index-invalid',
+    );
   }
-  if (!isRecord(value)) throw new SystemIndexError(`${indexPath} is not a JSON object.`);
+  if (!isRecord(value)) {
+    throw new SystemIndexError(`${indexPath} is not a JSON object.`, 'index-invalid');
+  }
   return value;
 }
 
@@ -393,7 +418,9 @@ function readList(
 ): SystemEntry[] {
   const vendorDir = joinPath('system', vendor);
   const list = index[listKey];
-  if (!Array.isArray(list)) throw new SystemIndexError(`${indexPath} has no "${listKey}" list.`);
+  if (!Array.isArray(list)) {
+    throw new SystemIndexError(`${indexPath} has no "${listKey}" list.`, 'no-list');
+  }
   const out: SystemEntry[] = [];
   const seen = new Set<string>();
   for (const item of list) {
@@ -678,7 +705,7 @@ async function loadVendorIndexesReporting(
     // OrcaSlicer 2.5 may keep every vendor as a .opc file only: no index to read, but the
     // presets are there (opc.ts). Parents are then checked by name only.
     if (plan.opc.length > 0) return { index: emptyIndex(plan.opc[0]!, loadWarnings), failed };
-    throw new SystemIndexError('No system preset index was found.');
+    throw new SystemIndexError('No system preset index was found.', 'index-missing');
   }
   if (parts.length === 1 && loadWarnings.length === 0) return { index: first, failed };
   return { index: combineIndexes(parts, loadWarnings), failed };

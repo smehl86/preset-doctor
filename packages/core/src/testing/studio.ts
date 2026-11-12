@@ -7,7 +7,12 @@ import { memFs, type MemFs } from '../memFs.js';
 import { LIST_KEY } from '../systemIndex.js';
 import { TERMS } from '../terms.js';
 import { PRESET_TYPES, type PresetType } from '../types.js';
-import { fixtureRoot, type FixtureName, type OrcaFixtureName } from './fixtures.js';
+import {
+  fixtureRoot,
+  type FixtureName,
+  type OrcaFixtureName,
+  type UnusableSystemFixtureName,
+} from './fixtures.js';
 
 export interface FakeSystemPreset {
   name: string;
@@ -92,7 +97,7 @@ export function sidecar(baseId: string, settingId = 'PFUS0000000000000a'): strin
 }
 
 /** Copies a fixture to a fresh temp folder. Call the returned cleanup when done. */
-export function tempFixture(name: FixtureName | OrcaFixtureName): {
+export function tempFixture(name: FixtureName | OrcaFixtureName | UnusableSystemFixtureName): {
   dir: string;
   cleanup: () => void;
 } {

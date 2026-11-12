@@ -96,6 +96,29 @@ describe('DoctorService', () => {
     expect(errCode(await s.scan(picked, undefined))).toBe('scan-failed');
   });
 
+  it('offers and plans no repair when the system presets are gone (Studio issue #12068)', async () => {
+    const s = makeService();
+    const healthy = ok(await s.scan(root, undefined));
+    expect(healthy.result.systemPresets).toBe('ok');
+    expect(healthy.defaults.length).toBeGreaterThan(0);
+
+    await rm(join(root, 'system'), { recursive: true });
+    const { result, defaults } = ok(await s.scan(root, undefined));
+    expect(result.systemPresets).toBe('missing');
+    expect(result.systemPresetsError?.path).toBe(join(root, 'system'));
+    expect(result.presets.filter((p) => p.status === 'hidden')).toEqual([]);
+    expect(result.findings.filter((f) => f.proposedFix)).toEqual([]);
+    expect(defaults).toEqual([]);
+
+    // Even the choices of the scan before it, sent again, are turned down.
+    const before = await readRoot(ORPHAN);
+    const refused = await s.plan(healthy.defaults, { updateBaseId: true });
+    expect(errCode(refused)).toBe('invalid');
+    expect(!refused.ok && refused.error.message).toContain('system presets are missing or empty');
+    expect(await readRoot(ORPHAN)).toBe(before);
+    expect(await zipCount()).toBe(0);
+  });
+
   it('plans with one-line diffs and validates choices', async () => {
     const s = makeService();
     expect(errCode(await s.plan([], {}))).toBe('invalid');

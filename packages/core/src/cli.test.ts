@@ -257,7 +257,12 @@ describe('preset-doctor CLI', () => {
       const r = await s.run('scan');
       expect(r.code, damage).toBe(EXIT.failed);
       expect(r.out).toContain('System presets: could not be read');
-      expect(r.out).toContain('INCOMPLETE: the system presets could not be read');
+      // One error for the whole scan, instead of the per-type INCOMPLETE line.
+      expect(r.out).toContain(
+        "ERROR: Bambu Studio's system presets are missing or empty, so presets can't be checked.",
+      );
+      expect(r.out).toContain(`Looked in: ${join(s.root, 'system')}`);
+      expect(r.out).not.toContain('INCOMPLETE');
       expect(r.out).toContain('could not be checked (system presets unreadable)');
       // Only the 3 wizard presets (no parent) count as OK; the 10 with a parent were not checked.
       expect(r.out).toContain('OK, with notes (10)');

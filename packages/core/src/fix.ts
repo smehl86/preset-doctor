@@ -101,6 +101,7 @@ export class FixError extends Error {
 
 /** The fixes Preset Doctor would make on its own: pre-selected candidates and renames. */
 export function defaultChoices(scan: ScanResult): FixChoice[] {
+  if (systemUnusable(scan)) return [];
   const byPath = new Map<string, FixChoice>();
   const choiceFor = (path: string): FixChoice => {
     let c = byPath.get(path);
@@ -126,6 +127,13 @@ export async function planFixes(
   choices: readonly FixChoice[],
   options: PlanOptions = {},
 ): Promise<Change[]> {
+  // Every write starts from a plan, so this turns writing off for a scan like that.
+  if (systemUnusable(scan)) {
+    throw new FixError(
+      `${scan.systemPresetsError?.message ?? "The system presets are missing or empty, so presets can't be checked."} ` +
+        'Nothing can be repaired until then.',
+    );
+  }
   const updateBaseId = options.updateBaseId ?? true;
   const changes: Change[] = [];
   const merged = mergeChoices(choices);
@@ -212,6 +220,14 @@ export async function planFixes(
     if (info?.change) changes.push(info.change);
   }
   return changes;
+}
+
+/**
+ * The scan could not use the system presets (ScanResult.systemPresets), so nothing it found may
+ * be repaired. A scan result from before that field (or a hand-made one in a test) counts as ok.
+ */
+function systemUnusable(scan: ScanResult): boolean {
+  return (scan.systemPresets ?? 'ok') !== 'ok';
 }
 
 /** The base_id edit for one preset, or why its sidecar was left alone. */

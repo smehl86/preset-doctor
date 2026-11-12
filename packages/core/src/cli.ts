@@ -114,8 +114,8 @@ Exit codes:
   0  done (scan: nothing hidden or broken)
   1  scan found hidden or broken presets
   2  bad command line
-  3  something could not be read or written (scan: the system presets could not be read,
-     so parent presets were not checked)
+  3  something could not be read or written (scan, fix: the system presets are missing,
+     empty or unreadable, so parent presets were not checked and nothing is repaired)
   4  refused for safety (the slicer is running, files changed meanwhile, or a backup
      came from another folder or the other slicer)
 `;
@@ -269,7 +269,7 @@ export async function main(argv: readonly string[], deps: Partial<CliDeps> = {})
   try {
     switch (command) {
       case 'scan':
-        return await scanCommand(args, rest, d, out);
+        return await scanCommand(args, rest, d, out, err);
       case 'fix':
         return await fixCommand(args, rest, d, out, err);
       case 'backups':
@@ -329,10 +329,22 @@ async function scanCommand(
   rest: string[],
   d: CliDeps,
   out: (l?: string) => void,
+  err: (l: string) => void,
 ): Promise<number> {
   const result = await runScan(rootArg(rest, d, args), args);
   if (args.json) out(JSON.stringify(result, null, 2));
   else printScan(result, args, out);
+  // The system presets are missing or empty: nothing was checked against them, whatever the rows
+  // say. The report has the error at its top and here at its end; --json keeps stdout as JSON.
+  const unusable = result.systemPresetsError;
+  if (unusable) {
+    if (args.json) err(`ERROR: ${unusable.message}`);
+    else {
+      out();
+      out(`ERROR: ${unusable.message}`);
+    }
+    return EXIT.failed;
+  }
   const rows = result.presets.filter((p) => selected(args, p));
   // Without a type's system index no parent of that type was checked: a clean exit would claim
   // nothing is hidden.
@@ -433,6 +445,11 @@ function printHeader(r: ScanResult, args: Args, out: (l?: string) => void): void
         : ''),
   );
   if (r.compat.checked) out(`Printers: ${printersLine(r)}`);
+  if (r.systemPresetsError) {
+    out();
+    out(`ERROR: ${r.systemPresetsError.message}`);
+    out('Only problems in the preset files themselves are listed below; nothing can be repaired.');
+  }
   // The R3 note is about filament and process presets only, the copies note about filaments.
   const r3Shown = selected(args, { type: 'filament' }) || selected(args, { type: 'process' });
   const copiesShown = selected(args, { type: 'filament' });
@@ -529,6 +546,11 @@ async function fixCommand(
   }
   const root = rootArg(rest, d, args);
   const result = await runScan(root, args);
+  if (result.systemPresetsError) {
+    err(`ERROR: ${result.systemPresetsError.message}`);
+    err('No repairs are offered, and nothing was changed.');
+    return EXIT.failed;
+  }
   const profile = slicerById(result.slicer);
   const inScope = new Set(result.presets.filter((p) => selected(args, p)).map((p) => p.path));
   const nozzles = args.nozzles;

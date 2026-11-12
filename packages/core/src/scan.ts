@@ -14,7 +14,7 @@ import {
   type CompatInputs,
 } from './compat.js';
 import { readSlicerConf, type SlicerConf } from './conf.js';
-import type { PresetFs } from './fs.js';
+import { isNotFound, type PresetFs } from './fs.js';
 import { buildUserIndex, chain, userInherits, type ResolveContext } from './resolve.js';
 import type { RuleContext } from './rules/context.js';
 import { orcaParentLookup } from './orcaLookup.js';
@@ -29,7 +29,13 @@ import {
 } from './rules/r2r3.js';
 import { checkR4, type R4Context } from './rules/r4.js';
 import { detectSlicer, type SlicerProfile } from './slicer.js';
-import { loadSystemIndexSet, studioNameLookup, type SystemIndexSet } from './systemIndex.js';
+import {
+  loadSystemIndexSet,
+  studioNameLookup,
+  type SystemIndex,
+  type SystemIndexFailure,
+  type SystemIndexSet,
+} from './systemIndex.js';
 import { TERMS } from './terms.js';
 import {
   PRESET_TYPES,
@@ -42,6 +48,7 @@ import {
   type PresetType,
   type ScanResult,
   type Severity,
+  type SystemPresetsState,
   type UserPreset,
 } from './types.js';
 import { countTypes, listAccounts, scanUser } from './userScan.js';
@@ -55,6 +62,14 @@ const INDEX_UNREADABLE: Record<PresetType, string> = {
   process: "Process presets based on system presets can't be checked.",
   machine: "Printer presets based on system presets can't be checked.",
 };
+
+/**
+ * The one error of a scan whose system presets can't be used (ScanResult.systemPresets is not
+ * 'ok'), written for Bambu Studio like every text here. The message adds the folder looked at.
+ */
+export const SYSTEM_PRESETS_UNUSABLE =
+  "Bambu Studio's system presets are missing or empty, so presets can't be checked. Open " +
+  'Bambu Studio and let it finish loading or updating, then scan again.';
 
 export interface ScanOptions {
   /** Account folder to scan. Default: the one with the most presets. */
@@ -127,6 +142,13 @@ export async function scan(fs: PresetFs, options: ScanOptions = {}): Promise<Sca
   const presets = userId === '' ? [] : await scanUser(fs, userId);
   const findings: Finding[] = [];
 
+  // Before any rule: with the system presets missing or empty (Bambu Studio issue #12068) every
+  // parent would look missing. Then only R4 and R5, which don't need them, run, and nothing is
+  // offered as a fix.
+  const systemPresets = await systemPresetsState(fs, indexes, presets);
+  const usable = systemPresets === 'ok';
+  const indexOf = (type: PresetType): SystemIndex | null => (usable ? indexes.byType[type] : null);
+
   const conf = await readSlicerConf(fs, profile);
   if (conf.syncUserPreset === true) findings.push(cloudSyncFinding(profile, conf));
   else if (conf.error !== undefined && conf.syncUserPreset === undefined) {
@@ -151,7 +173,7 @@ export async function scan(fs: PresetFs, options: ScanOptions = {}): Promise<Sca
   const resolves = new Map<PresetType, ResolveContext>();
   for (const type of PRESET_TYPES) {
     const list = presets.filter((p) => p.type === type);
-    const index = indexes.byType[type];
+    const index = indexOf(type);
     const typeR1: Finding[] = [];
     // R1 runs first, so R4 won't rename a preset that R1 suggests as someone's new parent.
     if (index && list.length > 0) {
@@ -207,7 +229,15 @@ export async function scan(fs: PresetFs, options: ScanOptions = {}): Promise<Sca
   }
 
   // R2/R3 judge only the presets Studio loads, so they run after R1 and R4.
-  const compat = await compatPass({ profile, conf, indexes, presets, ownFindings, resolves });
+  const compat = await compatPass({
+    profile,
+    conf,
+    indexes,
+    usable,
+    presets,
+    ownFindings,
+    resolves,
+  });
   const summaries: PresetSummary[] = [];
   for (const preset of presets) {
     const own = ownFindings.get(preset)!;
@@ -228,7 +258,7 @@ export async function scan(fs: PresetFs, options: ScanOptions = {}): Promise<Sca
       else if (f) own.push(f);
     }
     findings.push(...own);
-    const summary = summarize(preset, own, indexes.byType[preset.type] !== null, profile);
+    const summary = summarize(preset, own, indexOf(preset.type) !== null, profile);
     if (detail) summary.compat = detail;
     summaries.push(summary);
   }
@@ -242,10 +272,20 @@ export async function scan(fs: PresetFs, options: ScanOptions = {}): Promise<Sca
   warnings.push(...filamentWarnings, ...new Set(otherWarnings));
   const shownWarnings = warnings.map((w) => profile.reword(w));
   const indexesRead: Record<PresetType, boolean> = {
-    filament: indexes.byType.filament !== null,
-    process: indexes.byType.process !== null,
-    machine: indexes.byType.machine !== null,
+    filament: indexOf('filament') !== null,
+    process: indexOf('process') !== null,
+    machine: indexOf('machine') !== null,
   };
+  let systemPresetsError: ScanResult['systemPresetsError'];
+  if (!usable) {
+    // R4's renames are sound on their own, but nothing is written from a scan like this.
+    for (const f of findings) delete f.proposedFix;
+    const path = systemPath(root);
+    systemPresetsError = {
+      message: `${profile.reword(SYSTEM_PRESETS_UNUSABLE)} Looked in: ${path}`,
+      path,
+    };
+  }
   return {
     root,
     userId,
@@ -253,6 +293,8 @@ export async function scan(fs: PresetFs, options: ScanOptions = {}): Promise<Sca
     presets: summaries,
     findings,
     warnings: shownWarnings,
+    systemPresets,
+    ...(systemPresetsError ? { systemPresetsError } : {}),
     systemVersion: indexes.version,
     systemIndexRead: PRESET_TYPES.every((t) => indexesRead[t]),
     slicer: profile.id,
@@ -261,6 +303,56 @@ export async function scan(fs: PresetFs, options: ScanOptions = {}): Promise<Sca
     indexesRead,
     compat: compat.context,
   };
+}
+
+/** How each reason an index failed to load counts for the system presets as a whole. */
+const FAILURE_STATE: Record<SystemIndexFailure, SystemPresetsState> = {
+  'index-missing': 'missing',
+  'index-unreadable': 'unreadable',
+  'index-invalid': 'unreadable',
+  'no-list': 'empty',
+  'files-missing': 'empty',
+};
+
+/**
+ * Whether the system presets can be trusted to check user presets against (see
+ * SystemPresetsState). Not usable: no system folder or an empty one; a required index
+ * (system/BBL.json) that is missing, unreadable or without a filament list; or no system preset
+ * at all of a type (filament, process or printer) while the account has presets of that type
+ * that name a parent, which would all be reported as orphans. A type with no system presets
+ * that no user preset builds on is fine: nothing is checked against it (a copy with only
+ * filament profiles has empty process and printer lists, and so have most test fixtures).
+ *
+ * OrcaSlicer's packed vendors (.opc) list nothing on purpose, so the counts are skipped then.
+ */
+async function systemPresetsState(
+  fs: PresetFs,
+  indexes: SystemIndexSet,
+  presets: readonly UserPreset[],
+): Promise<SystemPresetsState> {
+  try {
+    // Dot files (.gitkeep, .DS_Store) are no presets.
+    if (!(await fs.list('system')).some((e) => !e.name.startsWith('.'))) return 'empty';
+  } catch (err) {
+    return isNotFound(err) ? 'missing' : 'unreadable';
+  }
+  const failed = indexes.errors.filament;
+  if (failed) return FAILURE_STATE[failed.reason];
+  if (indexes.opaque.length > 0) return 'ok';
+  for (const type of PRESET_TYPES) {
+    const index = indexes.byType[type];
+    // A process or printer index that failed to load is reported on its own (indexesRead).
+    if (!index || index.entries.size > 0) continue;
+    if (presets.some((p) => p.type === type && userInherits(p) !== '')) return 'empty';
+  }
+  return 'ok';
+}
+
+/** The system folder as the user would look for it: under the scanned folder. */
+function systemPath(root: string): string {
+  if (root === '') return 'system';
+  const sep = root.includes('\\') ? '\\' : '/';
+  return `${root}${root.endsWith(sep) ? '' : sep}system`;
 }
 
 /**
@@ -274,6 +366,8 @@ async function compatPass(args: {
   profile: SlicerProfile;
   conf: SlicerConf;
   indexes: SystemIndexSet;
+  /** False when the system presets can't be used at all: nothing is judged then. */
+  usable: boolean;
   presets: readonly UserPreset[];
   ownFindings: ReadonlyMap<UserPreset, Finding[]>;
   resolves: ReadonlyMap<PresetType, ResolveContext>;
@@ -294,7 +388,7 @@ async function compatPass(args: {
   const setup = await compatSetup({
     conf: args.conf,
     profile,
-    machines: indexes.byType.machine,
+    machines: args.usable ? indexes.byType.machine : null,
     userMachines: presets.filter((p) => p.type === 'machine' && shown(p)),
     hiddenUserMachines: presets.filter((p) => p.type === 'machine' && blocked.has(p)),
     resolve: resolves.get('machine'),

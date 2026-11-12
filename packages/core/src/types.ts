@@ -149,6 +149,19 @@ export interface AccountSummary {
   byType: Record<PresetType, number>;
 }
 
+/**
+ * Whether the slicer's system presets can be used to check user presets against:
+ * - 'ok';
+ * - 'missing': there is no system folder, or no system preset index (system/BBL.json) in it;
+ * - 'empty': the system folder is empty, or the index lists no presets (or none of their files
+ *   is there);
+ * - 'unreadable': the index is there but can't be read or is not valid JSON.
+ * Anything but 'ok' means the parents of user presets were not checked (R1 and R2/R3 did not
+ * run), no finding proposes a fix, and planFixes refuses: an empty system folder (Bambu Studio
+ * issue #12068) would otherwise make every preset look orphaned.
+ */
+export type SystemPresetsState = 'ok' | 'missing' | 'empty' | 'unreadable';
+
 export interface ScanResult {
   root: string;
   /** Account that was scanned. */
@@ -158,6 +171,13 @@ export interface ScanResult {
   findings: Finding[];
   /** Non-fatal problems, e.g. a system index entry whose file is missing. */
   warnings: string[];
+  /** Whether the system presets can be used at all; see SystemPresetsState. */
+  systemPresets: SystemPresetsState;
+  /**
+   * Set when systemPresets is not 'ok': the one error to show above everything else, and the
+   * system folder that was looked at (also named in the message).
+   */
+  systemPresetsError?: { message: string; path: string };
   /** BBL.json "version", e.g. '02.08.00.06'; null if the index could not be read. */
   systemVersion: string | null;
   /**

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Missing or empty system presets no longer make every preset look broken.** A Bambu Studio
+  bug ([BambuStudio#12068](https://github.com/bambulab/BambuStudio/issues/12068)) can leave the
+  system presets folder empty or missing. A `BBL.json` that listed no presets then made every
+  preset's parent look gone. Now the system presets are checked before any rule runs: when the
+  `system` folder is missing or empty, `BBL.json` is missing or unreadable, or there are no
+  system presets of a type your presets build on, the scan reports one error ("Bambu Studio's
+  system presets are missing or empty, so presets can't be checked. Open Bambu Studio and let it
+  finish loading or updating, then scan again.", with the folder it looked in), checks no
+  parents, proposes no fix and refuses to plan one. Problems in the preset files themselves
+  (damaged files, missing names) are still listed under it. The app shows the error as a banner
+  and hides the Fix bar; `scan` and `fix` exit with code 3, and `scan --json` has a new
+  top-level `systemPresets` field: `"ok"`, `"missing"`, `"empty"` or `"unreadable"`.
+
 ## 0.2.0 (2026-11-07)
 
 The in-Studio test ([docs/real-test-checklist.md](docs/real-test-checklist.md), sections 0–3)

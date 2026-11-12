@@ -137,6 +137,26 @@ Also expected: R4 "missing sidecar" (severity info) for the 18 `06` presets.
 Expected: account list 1000000001 (6 presets), 1000000002 (3), default (0); default pick is the
 account with the most presets. (Counts include `base/` presets.)
 
+## system-missing/, system-empty/, system-no-presets/
+
+Folders whose system presets can't be used, as Bambu Studio issue #12068 leaves them:
+
+| Fixture | `system/` | `systemPresets` |
+|---|---|---|
+| system-missing | no `system` folder at all | `missing` |
+| system-empty | the folder is there but empty (it holds only `.gitkeep` so git keeps it) | `empty` |
+| system-no-presets | `BBL.json` with every list empty, and no `BBL` folder | `empty` |
+
+`BambuStudio.conf`: `sync_user_preset: false`. `user/1000000001/filament/` is healthy's (10
+presets with a parent, 3 wizard presets in `base/`), plus `Sunlu Wood PLA.json` (no sidecar)
+and `Missing Name.json` from broken-r4.
+
+Expected: one top-level error naming the `system` folder; no R1 finding, although no parent can
+be found; no fix proposed anywhere; and planning a fix is refused. R4 still reports the two
+broken-r4 files (`No sync file (.info)`, info; `Preset has no name`, error). Of the 15 presets,
+1 is broken (Missing Name), the 11 others with a parent are `info` ("could not be checked"),
+never OK or hidden, and the 3 wizard presets are OK.
+
 ## types-bambu/
 
 Process and printer presets. `BambuStudio.conf`: `sync_user_preset: false`. The system

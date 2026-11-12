@@ -19,7 +19,21 @@ export type FixtureName = (typeof FIXTURE_NAMES)[number];
 export const ORCA_FIXTURE_NAMES = ['orca'] as const;
 export type OrcaFixtureName = (typeof ORCA_FIXTURE_NAMES)[number];
 
-export function fixtureRoot(name: FixtureName | OrcaFixtureName): string {
+/**
+ * Bambu Studio folders whose system presets can't be used (Bambu Studio issue #12068): no
+ * system folder, an empty one, and a BBL.json that lists nothing. Not in FIXTURE_NAMES, whose
+ * fixtures all share the working system subset.
+ */
+export const UNUSABLE_SYSTEM_FIXTURE_NAMES = [
+  'system-missing',
+  'system-empty',
+  'system-no-presets',
+] as const;
+export type UnusableSystemFixtureName = (typeof UNUSABLE_SYSTEM_FIXTURE_NAMES)[number];
+
+export function fixtureRoot(
+  name: FixtureName | OrcaFixtureName | UnusableSystemFixtureName,
+): string {
   return join(FIXTURES_DIR, name);
 }
 

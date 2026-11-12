@@ -960,6 +960,44 @@ for (const [fixture, spec] of Object.entries(fixtures)) {
     fs.writeFileSync(abs, f.text, 'utf8');
   }
 }
+// Folders whose system presets can't be used (Bambu Studio issue #12068). The user folder is
+// healthy's, plus two broken-r4 files, so there is something for R4 to report: nothing else
+// may be reported, and no fix proposed.
+const UNUSABLE_EXTRA = ['Sunlu Wood PLA.json', 'Missing Name.json', 'Missing Name.info'];
+const unusableUserFiles: OutFile[] = [
+  ...userFiles.get('healthy')!,
+  ...userFiles
+    .get('broken-r4')!
+    .filter((f) => UNUSABLE_EXTRA.includes(f.rel.slice(f.rel.lastIndexOf('/') + 1))),
+];
+const emptyIndex = {
+  ...bblIndex,
+  machine_model_list: [],
+  filament_list: [],
+  machine_list: [],
+  process_list: [],
+};
+const UNUSABLE_SYSTEM: Record<string, OutFile[]> = {
+  'system-missing': [],
+  'system-empty': [{ rel: 'system/.gitkeep', text: '' }],
+  'system-no-presets': [
+    { rel: 'system/BBL.json', text: serializeJsonFile(emptyIndex, bbl.format) },
+  ],
+};
+for (const [fixture, system] of Object.entries(UNUSABLE_SYSTEM)) {
+  const dir = path.join(outRoot, fixture);
+  fs.rmSync(dir, { recursive: true, force: true });
+  const files: OutFile[] = [
+    ...system,
+    ...unusableUserFiles,
+    { rel: 'BambuStudio.conf', text: synthesizeConf(false) },
+  ];
+  for (const f of files) {
+    const abs = path.join(dir, ...f.rel.split('/'));
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, f.text, 'utf8');
+  }
+}
 
 // ---------- leak check ----------
 
@@ -1242,6 +1280,26 @@ Also expected: R4 "missing sidecar" (severity info) for the 18 \`06\` presets.
 Expected: account list 1000000001 (6 presets), 1000000002 (3), default (0); default pick is the
 account with the most presets. (Counts include \`base/\` presets.)
 
+## system-missing/, system-empty/, system-no-presets/
+
+Folders whose system presets can't be used, as Bambu Studio issue #12068 leaves them:
+
+| Fixture | \`system/\` | \`systemPresets\` |
+|---|---|---|
+| system-missing | no \`system\` folder at all | \`missing\` |
+| system-empty | the folder is there but empty (it holds only \`.gitkeep\` so git keeps it) | \`empty\` |
+| system-no-presets | \`BBL.json\` with every list empty, and no \`BBL\` folder | \`empty\` |
+
+\`BambuStudio.conf\`: \`sync_user_preset: false\`. \`user/1000000001/filament/\` is healthy's (10
+presets with a parent, 3 wizard presets in \`base/\`), plus \`Sunlu Wood PLA.json\` (no sidecar)
+and \`Missing Name.json\` from broken-r4.
+
+Expected: one top-level error naming the \`system\` folder; no R1 finding, although no parent can
+be found; no fix proposed anywhere; and planning a fix is refused. R4 still reports the two
+broken-r4 files (\`No sync file (.info)\`, info; \`Preset has no name\`, error). Of the 15 presets,
+1 is broken (Missing Name), the 11 others with a parent are \`info\` ("could not be checked"),
+never OK or hidden, and the 3 wizard presets are OK.
+
 ## types-bambu/
 
 Process and printer presets. \`BambuStudio.conf\`: \`sync_user_preset: false\`. The system
@@ -1291,7 +1349,7 @@ fs.writeFileSync(path.join(outRoot, 'README.md'), readme, 'utf8');
 
 const total = systemFiles.reduce((n, f) => n + Buffer.byteLength(f.text), 0);
 console.log(
-  `Wrote ${Object.keys(fixtures).length + 2} fixtures to ${path.relative(repoRoot, outRoot)}: ` +
+  `Wrote ${Object.keys(fixtures).length + 2 + Object.keys(UNUSABLE_SYSTEM).length} fixtures to ${path.relative(repoRoot, outRoot)}: ` +
     `${systemFiles.length} system files (${Math.round(total / 1024)} KB each copy), ` +
     `${settingIdMap.size} setting ids anonymized.`,
 );
