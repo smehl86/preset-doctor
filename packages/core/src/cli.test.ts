@@ -65,7 +65,7 @@ describe('preset-doctor CLI', () => {
       expect(r.out).toContain('Usage:');
       expect(r.out).toContain('Exit codes:');
     }
-    expect((await run('--version')).out).toBe('0.2.0\n');
+    expect((await run('--version')).out).toBe('0.2.1\n');
   });
 
   it('rejects unknown commands and options', async () => {
